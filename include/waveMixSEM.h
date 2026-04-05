@@ -136,6 +136,9 @@ template <int dim>
     bool source_initialized = false;
     std::ofstream out;
 
+    const unsigned int boundary_id_left = 0;
+    const unsigned int boundary_id_right = 1;
+
   };
 
 

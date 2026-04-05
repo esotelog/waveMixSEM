@@ -101,20 +101,32 @@ template<int dim>
     std::cout << "Number of degrees of freedom: " << dof_handler.n_dofs()
                 << std::endl
                 << std::endl;
-
-    //handling hanging nodes (due to local refinement)
-    constraints.clear();   
+    
+     //periodic Boundary conditions
+    const unsigned int direction = 0; // 0 for x, 1 for y
+    std::vector<dii::GridTools::PeriodicFacePair<
+    typename dii::DoFHandler<dim>::cell_iterator>> periodic_faces;
+             
+    dii:: GridTools::collect_periodic_faces(dof_handler,
+                                            boundary_id_left,
+                                            boundary_id_right,
+                                            direction,   // 0 for x, 1 for y
+                                            periodic_faces);
+    //applying periodic boundary conditions
+    constraints.clear(); 
+    dii::DoFTools::make_periodicity_constraints<dim,dim>(periodic_faces,
+                                                         constraints); 
     constraints.close();  
   
     //Flux sparsity pattern
     dii::DynamicSparsityPattern dsp(dof_handler.n_dofs(), dof_handler.n_dofs());
-    dii::DoFTools::make_flux_sparsity_pattern(dof_handler, dsp);
+    dii::DoFTools::make_flux_sparsity_pattern(dof_handler, dsp, constraints, false);
     sparsity_pattern.copy_from(dsp);
 
     //Volume sparsity pattern
     
     dii::DynamicSparsityPattern dsp_volume(dof_handler.n_dofs(), dof_handler.n_dofs());
-    dii::DoFTools::make_sparsity_pattern(dof_handler, dsp_volume);
+    dii::DoFTools::make_sparsity_pattern(dof_handler, dsp_volume, constraints, false);
     sparsity_pattern_volume.copy_from(dsp_volume);
     
     //initializing global matrices
@@ -188,7 +200,11 @@ template<int dim>
         //Trasfer local cell matrix to global matrix
         local_dof_indices.resize(dofs_per_cell);
         cell->get_dof_indices(local_dof_indices);
-     
+
+        constraints.distribute_local_to_global(cell_stiffness_matrix, cell_mass_vector,
+                     local_dof_indices, stiffness_matrix, mass_vector);
+
+        /*
         for (const unsigned int i : fe_values.dof_indices())
         {
           mass_vector(local_dof_indices[i]) += cell_mass_vector(i);
@@ -198,10 +214,18 @@ template<int dim>
                                   cell_stiffness_matrix(i,j));   
             
           }
-        }//enf of loop by cell dof   
+        */
+        }//end of loop by cell dof   
   
-   for (unsigned int i=0; i<dof_handler.n_dofs(); ++i)
-      inverse_mass_vector(i) = 1.0 / mass_vector(i);    
+    // inverse mass vector
+    const double mass_eps =
+    1.0e-20 * std::max(mass_vector.linfty_norm(), 1.0);
+  
+    for (unsigned int i = 0; i < dof_handler.n_dofs(); ++i)
+       inverse_mass_vector(i) =
+      (mass_vector(i) > mass_eps) ? (1.0 / mass_vector(i)) : 0.0;
+  
+    constraints.distribute(inverse_mass_vector); 
     // std::cout << "Checking symmetry of stiffness_matrix without fluxes" << std::endl;
     // check_matrix_symmetry(stiffness_matrix, 1e-12, true);
 
@@ -309,8 +333,8 @@ template<int dim>
     const double rho= param.rho;
     //check if source is isotropic
 
-    const bool is_boundary_source =(param.source == 4);
-    const bool is_point_source =(! is_boundary_source);
+    //const bool is_boundary_source =(param.source == 4);
+    //const bool is_point_source =(! is_boundary_source);
 
 
     dii::hp::FEFaceValues<dim> hp_fe_facevalues (fe_collection, face_qcollection, 
@@ -329,9 +353,9 @@ template<int dim>
 
                   unsigned int bid = cell->face(f)->boundary_id();
                   bool is_top_boundary = (bid == 3 || bid == bid_max || bid == bid_min);
-                  bool allow_boundary_source= (is_boundary_source && !is_top_boundary);
+                  //bool allow_boundary_source= (is_boundary_source && !is_top_boundary);
 
-                  if (is_point_source || allow_boundary_source)
+                  if (bid=2 || is_top_boundary)
                   {
                   const auto &fe = cell->get_fe();
                   const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
@@ -376,6 +400,11 @@ template<int dim>
 
                   local_dof_indices.resize(dofs_per_cell);
                   cell->get_dof_indices(local_dof_indices);
+                  constraints.distribute_local_to_global(cell_boundary_matrix,
+                                                         local_dof_indices,
+                                                         boundary_matrix);
+
+                  /*
                   for (const unsigned int i : fe_facevalues.dof_indices())
                     for (const unsigned int j : fe_facevalues.dof_indices())
                       {
@@ -383,8 +412,10 @@ template<int dim>
                                             local_dof_indices[j],
                                             cell_boundary_matrix(i,j));
                       }
+                  */
+
                   }
-                }
+            }
   }
 
 
@@ -501,21 +532,6 @@ template<int dim>
     mesh_op.label_extreme_boundary_faces(dof_handler, 
                                          boundary_id, bid_min, bid_max,
                                          axis, fraction_nf, Lmin, Lmax, boundary_cellsf);
-     //source taper function
-    auto source_taper=[&](const double &x, const unsigned int &bid)
-    {
-      const double L=param.Lx;
-      double ld = x/Lmin;
-      double rd = (L-x)/Lmax;
-
-      if (bid == bid_min)
-        return 10*std::pow(ld, 3) - 15*std::pow(ld, 4) + 6*std::pow(ld, 5);
-      else if (bid == bid_max)
-        return 10*std::pow(rd, 3) - 15*std::pow(rd, 4) + 6*std::pow(rd, 5);
-      else
-      
-        return 1.0;
-    };
 
     dii::hp::FEFaceValues<dim>  hp_fe_facevalues (fe_collection, face_qcollection,
                                                   dii::update_values | 
@@ -531,7 +547,6 @@ template<int dim>
         {
           const auto &cell = it.first;
           const unsigned int f = it.second;
-          const unsigned int bid = cell->face(f)->boundary_id();
 
           const unsigned int dofs_per_cell = cell->get_fe().n_dofs_per_cell();
           cell_source_vector.reinit(dofs_per_cell);
@@ -542,22 +557,25 @@ template<int dim>
 
           for (const unsigned int q_point : fe_facevalues.quadrature_point_indices())
             {
-              const double x = fe_facevalues.quadrature_point(q_point)[axis];
-              const double taper = source_taper(x, bid);
              for (const unsigned int i: fe_facevalues.dof_indices())
               {
                 const unsigned int comp_i = cell->get_fe().system_to_component_index(i).first;
                 const unsigned int mcomp_i = comp_i % dim;
                 
                 double phi_i = fe_facevalues.shape_value(i,q_point);
-                cell_source_vector(i) += taper* phi_i *force_vector[mcomp_i] 
+                cell_source_vector(i) +=  phi_i *force_vector[mcomp_i] 
                                         * fe_facevalues.JxW(q_point);
               }
             }
             local_dof_indices.resize(dofs_per_cell);
             cell->get_dof_indices(local_dof_indices);
+            constraints.distribute_local_to_global(cell_source_vector,
+                                                   local_dof_indices,
+                                                   source_term);
+            /*
             for (const unsigned int i: fe_facevalues.dof_indices())
               source_term(local_dof_indices[i]) += cell_source_vector(i);
+            */
         }
   }
 
@@ -582,6 +600,9 @@ template<int dim>
                                qcollection,
                                InitialValuesV<dim>(),                       
                                old_solution_v);
+    // constraining old solution vectors
+    constraints.distribute(old_solution_u);
+    constraints.distribute(old_solution_v);
 
     dii::Vector<double> tmp (solution_u.size());
     dii::Vector<double> forcing_terms (solution_u.size());
@@ -645,13 +666,10 @@ template<int dim>
 
           //Include the source
           if (time <= source_function.source_duration())
-          {
-            
+          {          
             source_function.set_time(time); 
             double source_value= source_function.value();
-     
-            forcing_terms.equ(source_value * time_step/rho, source_term);
-          
+            forcing_terms.equ(source_value * time_step/rho, source_term);//forcing_terms = source_value * time_step/rho * source_term
             forcing_terms.scale(inverse_mass_vector);
 
           }
@@ -659,6 +677,7 @@ template<int dim>
            forcing_terms =0.0;
 
           solution_v += forcing_terms;
+          constraints.distribute(solution_v);
 
           //***Solving for u**
           solution_u = old_solution_u;
@@ -667,6 +686,7 @@ template<int dim>
           //calculating energ
           dealii::Vector<double> tmp(solution_v); 
           tmp.scale(mass_vector); 
+          constraints.distribute(solution_u);
 
           double total_energy=0.5*(solution_v * tmp) + 
                               0.5*stiffness_matrix.matrix_norm_square(solution_u);
