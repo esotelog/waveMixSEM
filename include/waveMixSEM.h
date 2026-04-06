@@ -135,9 +135,13 @@ template <int dim>
     const unsigned int bid_min=31, bid_max=32;
     bool source_initialized = false;
     std::ofstream out;
-
+    
+    //periodic boundary conditions parameters
     const unsigned int boundary_id_left = 0;
     const unsigned int boundary_id_right = 1;
+    const unsigned int direction = 0; // 0 for x, 1 for y
+    std::vector<dii::GridTools::PeriodicFacePair<
+    typename dii::DoFHandler<dim>::cell_iterator>> periodic_faces;
 
   };
 

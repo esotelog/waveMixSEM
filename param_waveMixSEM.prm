@@ -1,13 +1,13 @@
 # For assigning coordinates: Assume a reference mesh from 0.0 to 1.0 in all coordinates. 2D y =0.0 is at the top and y=1.0 at the bottom
 subsection Medium
-   set vp = 3000.0
-   set vs = 2121.3
+   set vp = 4242.6
+   set vs = 3000.0
    set rho = 2600.0
 
    #Fracture  compliance: Zn (normal), Zt (tangential)
    # if fracture is set to false no fracture is included
 
-   set fracture = true
+   set fracture = false
    set Zn= 2.25e-10
    set Zt =2.25e-10
 end
@@ -32,7 +32,7 @@ subsection Source
    set M21 = -1.0
 
    # vector source angle phi (deg), phi =0 along x axis
-   set phi = -90.0 
+   set phi = 0.0 
 
    # taper for the force/displacement at the boundary 
    set taper = 0.1
@@ -52,11 +52,11 @@ subsection Discretization
    set dt_factor = 0.05
 
    #mesh: number of samples per min wavelength (int)
-   set nsamples = 5
+   set nsamples = 4
    
    #mesh: meshsize (side length) 
-   set Lx =300.0
-   set Ly= 100.0
+   set Lx =70.0
+   set Ly= 70.0
 
    #mesh: number of samples per source diameter (int)
    set sourcesampling = 8
@@ -84,15 +84,15 @@ end
 
 subsection Output
    # receiver location in  x direction, separated by commas with no spaces
-   set receivers_x = 150.0
+   set receivers_x = 35.0
 
    #vtk files
    set vtk = true
 
    #time step interval
-   set vtk_step = 50
+   set vtk_step = 25
 
    # vtk and traces filename (do not write quotes)
-   set outputfile = WaveMixSEM_planePabcf2z2300
+   set outputfile = WaveMixSEM_planeSperiodic_welded
 
 end

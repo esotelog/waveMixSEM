@@ -1,4 +1,5 @@
 
+
 //constructor 
 template<int dim>
    waveMixSEM<dim>::waveMixSEM(const Parameters &prm):
@@ -37,6 +38,18 @@ template<int dim>
     const double h_bg = mesh.begin_active()->diameter();
     double h = mesh.begin_active()->extent_in_direction(1);
     std::cout <<"Lx: " << param.Lx << " Ly: " << param.Ly << std::endl;
+
+    std::vector<dii::GridTools::PeriodicFacePair<typename dii::Triangulation<dim>::cell_iterator>>
+                      tria_periodic_faces;
+
+    dii::GridTools::collect_periodic_faces(mesh,
+                                           boundary_id_left,
+                                           boundary_id_right,
+                                           direction,
+                                           tria_periodic_faces);
+    
+    mesh.add_periodicity(tria_periodic_faces);
+
 
     // Get the fracture coordinate in physical mesh units
   
@@ -103,10 +116,8 @@ template<int dim>
                 << std::endl;
     
      //periodic Boundary conditions
-    const unsigned int direction = 0; // 0 for x, 1 for y
-    std::vector<dii::GridTools::PeriodicFacePair<
-    typename dii::DoFHandler<dim>::cell_iterator>> periodic_faces;
-             
+
+
     dii:: GridTools::collect_periodic_faces(dof_handler,
                                             boundary_id_left,
                                             boundary_id_right,
@@ -223,7 +234,7 @@ template<int dim>
   
     for (unsigned int i = 0; i < dof_handler.n_dofs(); ++i)
        inverse_mass_vector(i) =
-      (mass_vector(i) > mass_eps) ? (1.0 / mass_vector(i)) : 0.0;
+       (mass_vector(i) > mass_eps) ? (1.0 / mass_vector(i)) : 0.0;
   
     constraints.distribute(inverse_mass_vector); 
     // std::cout << "Checking symmetry of stiffness_matrix without fluxes" << std::endl;
@@ -270,12 +281,33 @@ template<int dim>
                        typename Mw_helper<dim>::CopyData &)>  empty_cell_worker; 
     
     //Bpoundary worker (empty for Neumann boundary conditions)
-    const auto boundary_worker =[](const typename dii::DoFHandler<dim>::cell_iterator &,
-                                 const unsigned int &,
-                                 typename Mw_helper<dim>::ScratchData &,
-                                 typename Mw_helper<dim>::CopyData &)
+    const auto boundary_worker =[this](const typename dii::DoFHandler<dim>::cell_iterator & cell,
+                                 const unsigned int & face_n,
+                                 typename Mw_helper<dim>::ScratchData & scratch_data,
+                                 typename Mw_helper<dim>::CopyData & copy_data)
     {
         //Mw_helper<dim>::boundary_worker(cell, face_n, scratch_data, copy_data);
+      const unsigned int bid = cell->face(face_n)->boundary_id();
+      if (bid != boundary_id_left && bid != boundary_id_right)
+          return; // optional: Mw_helper<dim>::boundary_worker(...)
+
+      for (const auto &pair : periodic_faces)
+          {
+            if (cell == pair.cell[0] && face_n == pair.face_idx[0])
+              {
+                constexpr unsigned int sf  = 0;  // set from pair if needed (refinement)
+                constexpr unsigned int nsf = 0;
+                Mw_helper<dim>::face_flux_worker(cell,
+                                                 face_n,
+                                                 sf,
+                                                 pair.cell[1],
+                                                 pair.face_idx[1],
+                                                 nsf,
+                                                 scratch_data,
+                                                 copy_data);
+                return;
+              }
+          }
     };
 
     //Face worker
@@ -352,10 +384,11 @@ template<int dim>
                 {
 
                   unsigned int bid = cell->face(f)->boundary_id();
-                  bool is_top_boundary = (bid == 3 || bid == bid_max || bid == bid_min);
+                  bool is_periodic = (bid == boundary_id_left || bid == boundary_id_right);
+                  //bool is_top_boundary = (bid == 3 || bid == bid_max || bid == bid_min);
                   //bool allow_boundary_source= (is_boundary_source && !is_top_boundary);
 
-                  if (bid=2 || is_top_boundary)
+                  if (!is_periodic)
                   {
                   const auto &fe = cell->get_fe();
                   const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
@@ -376,22 +409,22 @@ template<int dim>
                                         fe.system_to_component_index(i).first;
 
                       const unsigned int mcomp_i = comp_i % dim;
+                      double ni = normal[mcomp_i];
+                      double phi_i = fe_facevalues.shape_value(i, q_point);
 
                       for (const unsigned int j: fe_facevalues.dof_indices())
                           {
                             const unsigned int comp_j =
                                         fe.system_to_component_index(j).first;                           
-                            const unsigned int mcomp_j = comp_j % dim;
-
-                            double ni = normal[mcomp_i];
+                            const unsigned int mcomp_j = comp_j % dim;                          
                             double nj = normal[mcomp_j];
-                            
+                            double phi_j = fe_facevalues.shape_value(j, q_point);
                             // creating a Kronecker delta
                             double delta_ij = (mcomp_i == mcomp_j) ? 1.0 : 0.0;
                             double geometry_term = rho* (vp - vs)*ni *nj  + rho* vs*delta_ij;
 
-                            cell_boundary_matrix(i, j) += fe_facevalues.shape_value(i, q_point) * 
-                                                          fe_facevalues.shape_value(j, q_point) * 
+                            cell_boundary_matrix(i, j) += phi_i * 
+                                                          phi_j * 
                                                           geometry_term *
                                                           fe_facevalues.JxW(q_point) ;
                           }
@@ -682,12 +715,11 @@ template<int dim>
           //***Solving for u**
           solution_u = old_solution_u;
           solution_u.add(time_step, solution_v);
+          constraints.distribute(solution_u);
 
           //calculating energ
           dealii::Vector<double> tmp(solution_v); 
           tmp.scale(mass_vector); 
-          constraints.distribute(solution_u);
-
           double total_energy=0.5*(solution_v * tmp) + 
                               0.5*stiffness_matrix.matrix_norm_square(solution_u);
 
