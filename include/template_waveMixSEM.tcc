@@ -41,15 +41,17 @@ template<int dim>
 
     std::vector<dii::GridTools::PeriodicFacePair<typename dii::Triangulation<dim>::cell_iterator>>
                       tria_periodic_faces;
-
-    dii::GridTools::collect_periodic_faces(mesh,
-                                           boundary_id_left,
-                                           boundary_id_right,
-                                           direction,
-                                           tria_periodic_faces);
     
-    mesh.add_periodicity(tria_periodic_faces);
-
+    if(param.source == 4)
+    {
+      dii::GridTools::collect_periodic_faces(mesh,
+                                            boundary_id_left,
+                                            boundary_id_right,
+                                            direction,
+                                            tria_periodic_faces);
+    
+      mesh.add_periodicity(tria_periodic_faces);
+    }
 
     // Get the fracture coordinate in physical mesh units
   
@@ -125,8 +127,10 @@ template<int dim>
                                             periodic_faces);
     //applying periodic boundary conditions
     constraints.clear(); 
-    dii::DoFTools::make_periodicity_constraints<dim,dim>(periodic_faces,
-                                                         constraints); 
+
+    if(param.source == 4)
+        dii::DoFTools::make_periodicity_constraints<dim,dim>(periodic_faces,
+                                                             constraints); 
     constraints.close();  
   
     //Flux sparsity pattern
@@ -215,17 +219,6 @@ template<int dim>
         constraints.distribute_local_to_global(cell_stiffness_matrix, cell_mass_vector,
                      local_dof_indices, stiffness_matrix, mass_vector);
 
-        /*
-        for (const unsigned int i : fe_values.dof_indices())
-        {
-          mass_vector(local_dof_indices[i]) += cell_mass_vector(i);
-          for (const unsigned int j : fe_values.dof_indices())            
-             stiffness_matrix.add(local_dof_indices[i],
-                                  local_dof_indices[j],
-                                  cell_stiffness_matrix(i,j));   
-            
-          }
-        */
         }//end of loop by cell dof   
   
     // inverse mass vector
@@ -237,8 +230,7 @@ template<int dim>
        (mass_vector(i) > mass_eps) ? (1.0 / mass_vector(i)) : 0.0;
   
     constraints.distribute(inverse_mass_vector); 
-    // std::cout << "Checking symmetry of stiffness_matrix without fluxes" << std::endl;
-    // check_matrix_symmetry(stiffness_matrix, 1e-12, true);
+
 
   }
 
@@ -286,13 +278,14 @@ template<int dim>
                                  typename Mw_helper<dim>::ScratchData & scratch_data,
                                  typename Mw_helper<dim>::CopyData & copy_data)
     {
-        //Mw_helper<dim>::boundary_worker(cell, face_n, scratch_data, copy_data);
-      const unsigned int bid = cell->face(face_n)->boundary_id();
-      if (bid != boundary_id_left && bid != boundary_id_right)
-          return; // optional: Mw_helper<dim>::boundary_worker(...)
+      if(param.source == 4)
+        {
+         const unsigned int bid = cell->face(face_n)->boundary_id();
+         if (bid != boundary_id_left && bid != boundary_id_right)
+            return; // optional: Mw_helper<dim>::boundary_worker(...)
 
-      for (const auto &pair : periodic_faces)
-          {
+         for (const auto &pair : periodic_faces)
+           {
             if (cell == pair.cell[0] && face_n == pair.face_idx[0])
               {
                 constexpr unsigned int sf  = 0;  // set from pair if needed (refinement)
@@ -307,7 +300,10 @@ template<int dim>
                                                  copy_data);
                 return;
               }
-          }
+           }
+        }
+      else
+          return;
     };
 
     //Face worker
@@ -365,8 +361,8 @@ template<int dim>
     const double rho= param.rho;
     //check if source is isotropic
 
-    //const bool is_boundary_source =(param.source == 4);
-    //const bool is_point_source =(! is_boundary_source);
+    const bool is_boundary_source =(param.source == 4);
+    const bool point_source_abc =(! is_boundary_source);
 
 
     dii::hp::FEFaceValues<dim> hp_fe_facevalues (fe_collection, face_qcollection, 
@@ -385,10 +381,9 @@ template<int dim>
 
                   unsigned int bid = cell->face(f)->boundary_id();
                   bool is_periodic = (bid == boundary_id_left || bid == boundary_id_right);
-                  //bool is_top_boundary = (bid == 3 || bid == bid_max || bid == bid_min);
-                  //bool allow_boundary_source= (is_boundary_source && !is_top_boundary);
+                  bool boundary_source_abc= (is_boundary_source && !is_periodic);
 
-                  if (!is_periodic)
+                  if (point_source_abc || boundary_source_abc)
                   {
                   const auto &fe = cell->get_fe();
                   const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
@@ -437,15 +432,6 @@ template<int dim>
                                                          local_dof_indices,
                                                          boundary_matrix);
 
-                  /*
-                  for (const unsigned int i : fe_facevalues.dof_indices())
-                    for (const unsigned int j : fe_facevalues.dof_indices())
-                      {
-                        boundary_matrix.add(local_dof_indices[i],
-                                            local_dof_indices[j],
-                                            cell_boundary_matrix(i,j));
-                      }
-                  */
 
                   }
             }
@@ -535,20 +521,7 @@ template<int dim>
           throw std::runtime_error("Invalid source type");
 
         source_term(local_dof_indices[i]) += force_i;    
-        
-        /*
-        std::cout <<"phi: " << phi << std::endl;
-        std::cout <<"force_vector: " << force_vector[comp_i] << std::endl;
-        std::cout <<"source_value: " << source_value << std::endl;
-        std::cout <<"source_term: " << source_term(local_dof_indices[i]) << std::endl;
-        std::cout <<"--------------------------------" << std::endl;
 
-        out <<"phi: " << phi << std::endl;
-        out <<"force_vector: " << force_vector[comp_i] << std::endl;
-        out <<"source_value: " << source_value << std::endl;
-        out <<"source_term: " << source_term(local_dof_indices[i]) << std::endl;
-        out <<"--------------------------------" << std::endl;
-        */
       }
   }
   template<int dim>
@@ -605,10 +578,7 @@ template<int dim>
             constraints.distribute_local_to_global(cell_source_vector,
                                                    local_dof_indices,
                                                    source_term);
-            /*
-            for (const unsigned int i: fe_facevalues.dof_indices())
-              source_term(local_dof_indices[i]) += cell_source_vector(i);
-            */
+
         }
   }
 
