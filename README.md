@@ -1,10 +1,10 @@
-#Introduction
+# Introduction
 This code uses mix CG-DG (SEM) formulations to embed  a large fracture (between DG cells) in a homogeneous background (CG cells). The effect of the fracture is included only via a special flux but not physically on the mesh. The method solves for the elastic wave equation.
 
 # To use this code
 ./waveMixSEM_exe param_waveMixSEM.prm
 
-#example folder
+# example folder
 ## Run the code
 ./waveMixSEM_exe example.prm
 
@@ -33,6 +33,6 @@ Bottom receiver showing trasmitted wave
 
 ## Animation
 
-<video controls width="700">
-  <source src="./example/figures/example.mp4" type="video/mp4">
-</video>
+![Wave propagation simulation](./example/figures/example.gif)
+
+[▶ Download full video (MP4)](./example/figures/example.mp4)
