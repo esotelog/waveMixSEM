@@ -67,7 +67,7 @@ template<int dim>
                      top_dg_y, bottom_dg_y);
 
     // Refining DG rows (and 2 CG rows above/below) if requested
-
+    // print mesh vtk
     mesh_op.print_mesh(mesh);
 
 
@@ -619,14 +619,10 @@ template<int dim>
     else 
         assemble_point_source ();
 
-    // Open output files for receivers' data (one per y-level)
-    const std::string base = param.outputfile + "-";
-    std::ofstream out_yup((base + "r_yup.dat").c_str());
-    std::ofstream out_ydg((base + "r_ydg.dat").c_str());
-    std::ofstream out_ydown((base + "r_ydown.dat").c_str());
+    const std::string base = param.outputfile;
+    std::ofstream receiver_out((base + ".dat").c_str());
 
-    // Write headers
-    write_receiver_header(out_yup, out_ydg, out_ydown);
+    write_receiver_header(receiver_out);
 
     // time calculations
     // const double min_cellsize= extreme_cellsize(mesh);
@@ -711,7 +707,7 @@ template<int dim>
           old_solution_u = solution_u;
           old_solution_v = solution_v;
 
-          write_receiver_data(time, out_yup, out_ydg, out_ydown);
+          write_receiver_data(time, receiver_out);
           //if (timestep_number >= 10)
              //break;
          }
@@ -789,6 +785,7 @@ template<int dim>
       data_out.build_patches(n_subdivisions);
       
       const std::string output_dir = "./vtk/";
+      std::filesystem::create_directories(output_dir);
       const std::string filename = output_dir +
                                   param.outputfile + "-" +
                                   dii::Utilities::int_to_string (timestep_number, 3) +
@@ -799,75 +796,61 @@ template<int dim>
   
 
 template<int dim>
-  void waveMixSEM<dim>::write_receiver_header(std::ofstream &out_yup,
-                                            std::ofstream &out_ydg,
-                                            std::ofstream &out_ydown)
+  void waveMixSEM<dim>::write_receiver_header(std::ofstream &receiver_out)
   {
-    const unsigned int nr = param.receivers_x.size();
-    if (receivers_pos.empty() || nr == 0 || receivers_pos.size() != 3 * nr)
+    const unsigned int nx = param.receivers_x.size();
+    const unsigned int nrecv = receivers_pos.size();
+    const unsigned int ny = (nx == 0 || nrecv % nx != 0) ? 0 : nrecv / nx;
+
+    if (receivers_pos.empty() || nx == 0 || ny == 0 || nrecv != nx * ny)
       return;
 
-    auto write_header = [&](std::ofstream &f, unsigned int offset, const char *label)
-    {
-      f << "# " << label << "  y = " << receivers_pos[offset][1] << std::endl;
-      f << "# x_coords:";
-      for (unsigned int i = 0; i < nr; ++i)
-        f << " " << receivers_pos[offset + i][0];
-      f << std::endl;
-      f << "# time";
-      for (unsigned int i = 0; i < nr; ++i)
-        f << "  ux_r" << i << "  uy_r" << i;
-      f << std::endl;
-    };
+    const char *comp_name[] = {"ux", "uy", "uz"};
 
-    write_header(out_yup,      0,      "CG yup");
-    write_header(out_ydg,      nr,     "DG ydg");
-    write_header(out_ydown,  2 * nr,   "CG ydown");
+    receiver_out << "#";
+    for (unsigned int k = 0; k < nrecv; ++k)
+      {
+        const auto &p = receivers_pos[k];
+        receiver_out << " x" << k << "=" << p[0] << ", y" << k << "=" << p[1];
+        if (k + 1 < nrecv)
+          receiver_out << ",";
+      }
+    receiver_out << std::endl;
+
+    receiver_out << "# time";
+    for (unsigned int k = 0; k < nrecv; ++k)
+      for (unsigned int c = 0; c < dim; ++c)
+        receiver_out << "  " << comp_name[c] << "_r" << k;
+    receiver_out << std::endl;
   }
 
 template<int dim>
   void waveMixSEM<dim>::write_receiver_data(const double time,
-                                         std::ofstream &out_yup,
-                                         std::ofstream &out_ydg,
-                                         std::ofstream &out_ydown)
+                                            std::ofstream &receiver_out)
   {
-    const unsigned int nr = param.receivers_x.size();
-    if (receivers_pos.empty() || nr == 0)
+    const unsigned int nx = param.receivers_x.size();
+    const unsigned int nrecv = receivers_pos.size();
+    const unsigned int ny = (nx == 0 || nrecv % nx != 0) ? 0 : nrecv / nx;
+
+    if (receivers_pos.empty() || nx == 0 || ny == 0 || nrecv != nx * ny)
       return;
 
-    // receivers_pos layout:
-    //   [0    .. nr-1]    : CG at yup    (components 0,1)
-    //   [nr   .. 2*nr-1]  : DG at ydg    (components 2,3)
-    //   [2*nr .. 3*nr-1]  : CG at ydown  (components 0,1)
+    // Same point order as Mesh_operations::receiver_coordinates: y outer, x inner.
+    // For ny==3: row 0 = CG (yup), row 1 = DG (ydg), row 2 = CG (ydown).
 
     dii::Vector<double> value(4);
 
-    // yup (CG): time ux_r0 uy_r0 ux_r1 uy_r1 ...
-    out_yup << time;
-    for (unsigned int i = 0; i < nr; ++i)
-    {
-      dii::VectorTools::point_value(dof_handler, solution_u, receivers_pos[i], value);
-      out_yup << " " << value(0) << " " << value(1);
-    }
-    out_yup << std::endl;
-
-    // ydg (DG): time ux_r0 uy_r0 ux_r1 uy_r1 ...
-    out_ydg << time;
-    for (unsigned int i = nr; i < 2 * nr; ++i)
-    {
-      dii::VectorTools::point_value(dof_handler, solution_u, receivers_pos[i], value);
-      out_ydg << " " << value(2) << " " << value(3);
-    }
-    out_ydg << std::endl;
-
-    // ydown (CG): time ux_r0 uy_r0 ux_r1 uy_r1 ...
-    out_ydown << time;
-    for (unsigned int i = 2 * nr; i < 3 * nr; ++i)
-    {
-      dii::VectorTools::point_value(dof_handler, solution_u, receivers_pos[i], value);
-      out_ydown << " " << value(0) << " " << value(1);
-    }
-    out_ydown << std::endl;
+    receiver_out << time;
+    for (unsigned int k = 0; k < nrecv; ++k)
+      {
+        dii::VectorTools::point_value(
+          dof_handler, solution_u, receivers_pos[k], value);
+        const unsigned int iy = k / nx;
+        const bool dg_row = (ny == 3 && iy == 1);
+        for (unsigned int c = 0; c < dim; ++c)
+          receiver_out << " " << (dg_row ? value(2 + c) : value(c));
+      }
+    receiver_out << std::endl;
   }
 
 template<int dim>

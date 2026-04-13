@@ -1,23 +1,24 @@
 # For assigning coordinates: Assume a reference mesh from 0.0 to 1.0 in all coordinates. 2D y =0.0 is at the top and y=1.0 at the bottom
 subsection Medium
-   set vp = 3000.0
-   set vs = 2121.3
+   set vp = 4242.6
+   set vs = 3000.0
    set rho = 2600.0
 
    #Fracture  compliance: Zn (normal), Zt (tangential)
    # if fracture is set to false no fracture is included
 
    set fracture = true
-   set Zn= 2.25e-10
-   set Zt =2.25e-10
+   set Zn= 3.8e-10
+   set Zt =3.8e-10
 end
 
 subsection Source
+
    # fo = central frequency(Ricker), = 1/rise time (Brune)
    set fo =150.0
    
    # source 1. MT, 2. vector force 3. Antisymmetric MT (not physical) 4. Traction at top boundary
-   set source = 1
+   set source = 4
 
    #Moment tensor
    set M11 = 0.0
@@ -25,12 +26,12 @@ subsection Source
    set M22 = 0.0
 
    # vector source angle phi (deg), phi =0 along x axis
-   set phi = -90.0 
+   set phi = 0.0 
 
    #source location (loc_z not used if the problem is 2d)
    #double coord (down is 0 to negative)
-   set loc_x = 40.0
-   set loc_y = -20.0
+   set loc_x = 50
+   set loc_y = -50.0
    set loc_z = 0.0 
 end
 
@@ -47,10 +48,15 @@ subsection Discretization
    #mesh: meshsize (side length) 
    set Lx =80.0
    set Ly= 80.0
+
+   #mesh: number of samples per source diameter (int)
+   set sourcesampling = 8
    
    # DG rows (int: multiple of 2)
    set dg_rows = 2
 
+   # Refine DG rows (bool). if true it Doubles the initial DG rows
+   set refine_dg_rows = false
 end
 
 subsection FEM
@@ -78,6 +84,6 @@ subsection Output
    set vtk_step = 25
 
    # vtk and traces filename (do not write quotes)
-   set outputfile = WaveMixSEM_MTabc
+   set outputfile = WaveMixSEM_d
 
 end

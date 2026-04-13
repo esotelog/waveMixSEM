@@ -448,10 +448,12 @@ template <int dim>
 template <int dim>
   void Mesh_operations<dim>::print_mesh(dii::Triangulation<dim> &mesh) const
   {
-  const std::string filename = "./vtk/" + param.outputfile + "_mesh.vtk";
-  std::ofstream out(filename);
-  dii::GridOut grid_out;
-  grid_out.write_vtk(mesh, out);
+    const std::string output_dir = "./vtk/";
+    std::filesystem::create_directories(output_dir);
+    const std::string filename = output_dir + param.outputfile + "_mesh.vtk";
+    std::ofstream out(filename);
+    dii::GridOut grid_out;
+    grid_out.write_vtk(mesh, out);
   }
 
   template <int dim>
@@ -535,7 +537,6 @@ template <int dim>
     std::vector<dii::Point<dim>> receivers_pos;
     if (receivers_x.empty())
       return receivers_pos;
-
 
     const bool is_boundary_source =(param.source == 4 );
     double source_y=0.0;
