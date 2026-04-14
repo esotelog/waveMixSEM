@@ -14,8 +14,8 @@ This implementation utilizes the Spectral Element Method (SEM) to solve for the 
 ./waveMixSEM_exe example.prm
 
 output
-- example.dat
-- vtk files 
+- example.dat with receivers data
+- vtk files (optional)
 - waveMixSEM_log.txt
 
 ## Model: Shear plane wave
