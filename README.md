@@ -1,10 +1,10 @@
 <h1 align="center">Modeling the effect of a large fracture on seismic wave propagation</h1>
 
 # Background
-This work numerically models the interaction between a propagating seismic wavefield and a large fracture, specifically capturing the resulting reflected and transmitted waves. In particular, the model represents a large fracture as an interface within a homogeneous medium. This interface induces a discontinuity in the displacement of the propagating wavefield, with a magnitude directly governed by the fracture compliances.
+This work numerically models the interaction between a propagating seismic wavefield and a large fracture, specifically capturing the resulting reflected and transmitted waves. In particular, the model represents a large fracture as an interface within a homogeneous medium. The interface induces a displacement discontinuity whose magnitude is governed by the fracture compliances. Increased compliance results in a larger discontinuity, which in turn amplifies the reflected wavefield.
 
 # Numerical implementation
-This implementation utilizes the Spectral Element Method (SEM), specifically coupling Continuous (CG) and Discontinuous (DG) Galerkin formulations across different regions of the domain. The DG approach naturally incorporates fractures by using modified numerical fluxes at designated cell interfaces to represent fracture compliances. While the DG formulation is computationally more expensive due to the doubling of degrees of freedom at interfaces, the CG formulation maintains efficiency by sharing those nodes. By assigning CG cells to the homogeneous background, the model optimizes performance where the specialized treatment of the DG method is not required.
+This implementation utilizes the Spectral Element Method (SEM) to solve for the elastic wave equation, coupling Continuous (CG) and Discontinuous (DG) Galerkin formulations across different regions of the domain. The DG approach naturally incorporates fractures by using modified numerical fluxes at designated cell interfaces to represent fracture compliances. While the DG formulation is computationally more expensive due to the doubling of degrees of freedom at interfaces, the CG formulation maintains efficiency by sharing those nodes. By assigning CG cells to the homogeneous background, the model optimizes performance where the specialized treatment of the DG method is not required.
 
 # To run the executable
 ./waveMixSEM_exe param_waveMixSEM.prm
