@@ -84,6 +84,6 @@ subsection Output
    set vtk_step = 25
 
    # vtk and traces filename (do not write quotes)
-   set outputfile = WaveMixSEM_d
+   set outputfile = WaveMixSEM_planeSperiodic_f2z4
 
 end
