@@ -18,6 +18,7 @@
 #ifndef WAVE_MIX_SEM_H       
 #define WAVE_MIX_SEM_H
 
+#include <iomanip>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
